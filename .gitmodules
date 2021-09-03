@@ -1,0 +1,3 @@
+[submodule "vision/yolov5"]
+	path = vision/yolov5
+	url = https://github.com/ultralytics/yolov5
