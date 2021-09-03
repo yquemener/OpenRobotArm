@@ -9,13 +9,13 @@ sg.theme('DarkAmber')   # Add a touch of color
 banks = dict()
 banks_names = ('M1', 'M2', 'M3', 'M4')
 
-input_layout = [[sg.Text('Base'), sg.Slider(orientation='h', key='BASE', range=(0, 180), default_value=0, enable_events=True)],
-                [sg.Text('Shoulder'), sg.Slider(orientation='h', key='SHOULDER', range=(15, 165), default_value=40, enable_events=True)],
-                [sg.Text('Elbow'), sg.Slider(orientation='h', key='ELBOW', range=(0, 180), default_value=180, enable_events=True)],
-                [sg.Text('Wrist vert'), sg.Slider(orientation='h', key='WRISTV', range=(0, 180), default_value=170, enable_events=True)],
-                [sg.Text('Wrist rot'), sg.Slider(orientation='h', key='WRISTR', range=(0, 180), default_value=0, enable_events=True)],
-                [sg.Text('Gripper'), sg.Slider(orientation='h', key='GRIPPER', range=(10, 73), default_value=73, enable_events=True)],
-                [sg.Button('Run'),sg.Checkbox('Autorun', key='autorun'), sg.Button('Save'),sg.Button('Load'),],
+input_layout = [[sg.Text('Base'), sg.Slider(orientation='h', key='BASE', range=(0, 180), default_value=0)],
+                [sg.Text('Shoulder'), sg.Slider(orientation='h', key='SHOULDER', range=(15, 165), default_value=40)],
+                [sg.Text('Elbow'), sg.Slider(orientation='h', key='ELBOW', range=(0, 180), default_value=180)],
+                [sg.Text('Wrist vert'), sg.Slider(orientation='h', key='WRISTV', range=(0, 180), default_value=170)],
+                [sg.Text('Wrist rot'), sg.Slider(orientation='h', key='WRISTR', range=(0, 180), default_value=0)],
+                [sg.Text('Gripper'), sg.Slider(orientation='h', key='GRIPPER', range=(10, 73), default_value=73)],
+                [sg.Button('Start'),sg.Button('Send'),sg.Checkbox('Autosend', key='autosend'), sg.Button('Save'),sg.Button('Load'),],
                 [sg.Radio('M1', "bank", k="M1", enable_events=True), sg.Radio('M2', "bank", k="M2", enable_events=True),
                  sg.Radio('M3', "bank", k="M3", enable_events=True), sg.Radio('M4', "bank", k="M4", enable_events=True)]]
                 #
@@ -45,7 +45,7 @@ def set_tuple(window, t):
         window[k].update(v)
 
 
-def get_Selected_bank(values):
+def get_selected_bank(values):
     for k in banks_names:
         if values[k]:
             return k
@@ -53,24 +53,37 @@ def get_Selected_bank(values):
 
 
 if __name__ == '__main__':
+    old_values = None
     banks = pickle.load(open("banks.pickle", "rb"))
-    window = sg.Window('Window Title', input_layout)
+    window = sg.Window('Braccio control', input_layout)
+    event, values = window.read(100)
+    if "M1" in banks.keys():
+        set_tuple(window, banks["M1"])
+
     while True:
         event, values = window.read(100)
         if event == sg.WIN_CLOSED or event == 'Cancel':  # if user closes window or clicks cancel
             break
-        if event == "Run" or values['autorun']:
-            print(values)
-            b = bytes([255] + [int(x) for x in get_tuple(values)])
-            ser.write(b)
-            ser.flush()
+        if event == "Send" or (event == "__TIMEOUT__" and values['autosend']):
+            if ser.out_waiting == 0:
+                if old_values != values:
+                    b = bytes([255, ord('G')] + [int(x) for x in get_tuple(values)])
+                    print(get_tuple(values))
+                    ser.write(b)
+                    ser.flush()
+                    old_values=values
+        if event == "Start":
+            if ser.out_waiting == 0:
+                b = bytes([255, ord('S')])
+                ser.write(b)
+                ser.flush()
         if event == "Save":
-            selected_bank = get_Selected_bank(values)
+            selected_bank = get_selected_bank(values)
             if selected_bank is not None:
                 banks[selected_bank]=get_tuple(values)
             pickle.dump(banks, open("banks.pickle", "wb"))
         if event == "Load":
-            selected_bank = get_Selected_bank(values)
+            selected_bank = get_selected_bank(values)
             if selected_bank is not None:
                 set_tuple(window, banks[selected_bank])
 
@@ -79,5 +92,5 @@ if __name__ == '__main__':
         #     for i in range(4):
         #         c = ser.read()
         #         print(c)
-        print('Event ', event)
+        # print('Event ', event)
 
