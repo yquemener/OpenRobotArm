@@ -20,7 +20,7 @@ void loop() {
       wv=Serial.read();
       wr=Serial.read();
       g=Serial.read();
-      Braccio.ServoMovement(20, b,s,e,wv,wr,g);
+      Braccio.ServoMovement(1, b,s,e,wv,wr,g);
     }
   }
 }
