@@ -118,7 +118,7 @@ class Ui_MainWindow(QWidget):
     def __init__(self, parent=None):
         super(Ui_MainWindow, self).__init__()
         self.GLview = WGL(None)
-        self.GLview.robot = URDF.load('/home/yves/tmp/urdfpy/tests/data/ur5/braccio.urdf')
+        self.GLview.robot = URDF.load('urdf/braccio.urdf')
         self.button = QPushButton('Test', self)
         mainLayout = QHBoxLayout()
         mainLayout.addWidget(self.GLview)
