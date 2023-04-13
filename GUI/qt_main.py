@@ -1,4 +1,4 @@
-
+import serial
 from PyQt5 import uic
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QPushButton, QHBoxLayout, QWidget, QLabel, QSlider, QSpacerItem, QSizePolicy, \
@@ -94,7 +94,8 @@ class App(QApplication):
             self.form.tabJoints.layout().addWidget(QLabel(f"{joint.name}"), irow, 0)
             slider = QSlider(Qt.Orientation.Horizontal)
             slider.valueChanged.connect(self.updatePose)
-            slider.setMaximum(360)
+            slider.setMinimum(int(180*joint.limit.lower/np.pi))
+            slider.setMaximum(int(180*joint.limit.upper/np.pi))
             self.form.jointsSlider[joint.name] = slider
             self.form.tabJoints.layout().addWidget(slider, irow, 1)
 
@@ -105,6 +106,7 @@ class App(QApplication):
             self.form.tabJoints.layout().addWidget(lEdit, irow, 2)
             print(joint.name)
         self.form.tabJoints.layout().addItem(QSpacerItem(1,1,QSizePolicy.Minimum, QSizePolicy.Expanding), irow+1, 1)
+        self.form.button_connect.clicked.connect(self.connect)
         self.window.show()
 
     def updatePose(self, *args):
@@ -113,6 +115,45 @@ class App(QApplication):
             self.form.jointsLineEdit[name].setText(f"{slider.value()}")
         self.form.openGLWidget.updateScene(cfg)
         self.form.openGLWidget.update()
+
+    def connect(self):
+        self.form.label_connectionStatus.setText("Connecting")
+        success = False
+        num = 0
+        self.serial = serial.Serial(port=None, baudrate=57600)
+        self.serial.dts = True
+        while not success:
+            try:
+                self.serial.port = f'/dev/ttyACM{num}'
+                self.serial.open()
+                self.serial_dev = f'/dev/ttyACM{num}'
+                success = True
+                break
+            except:
+                print(f"Failed to connect to /dev/ttyACM{num}")
+                if num > 100:
+                    self.form.label_connectionStatus.setText("Disconnected")
+                    break
+            try:
+                self.serial.port = f'/dev/ttyUSB{num}'
+                self.serial.open()
+                self.serial_dev = f'/dev/ttyUSB{num}'
+                success = True
+                break
+            except:
+                print(f"Failed to connect to /dev/ttyUSB{num}")
+                num += 1
+                if num > 100:
+                    self.form.label_connectionStatus.setText("Disconnected")
+                    break
+        if not success:
+            self.serial = None
+        else:
+            if not self.amperes_thread_running:
+                self.amperes_thread_running = True
+                self.amperes_thread.start()
+            self.form.label_connectionStatus.setText(f"Connected on \n{self.serial_dev}")
+            self.serial.timeout = 0.1
 
 class Ui_MainWindow(QWidget):
     def __init__(self, parent=None):
@@ -125,15 +166,6 @@ class Ui_MainWindow(QWidget):
         mainLayout.addWidget(self.button)
         self.setLayout(mainLayout)
 
-
-# import sys
-# app = QApplication(sys.argv)
-# Form = QMainWindow()
-# ui = Ui_MainWindow(Form)
-# ui.show()
-# sys.exit(app.exec_())
-
-#
 app = App()
 app.exec_()
 
