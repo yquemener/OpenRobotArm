@@ -1,15 +1,15 @@
 import math
 
-class Link:
-    def __init__(self):
-        self._length = 0.0
-        self._angle_low = 0.0
-        self._angle_high = 0.0
-        self._angle = 0.0
 
-    def init(self, length, angle_low_limit, angle_high_limit):
+# Quick conversion from the Braccio angle system to radians
+def b2a(b):
+    return b / 180.0 * math.pi - (math.pi / 2)
+
+
+class Link:
+    def __init__(self, length, angle_low_limit, angle_high_limit):
         self._length = length
-        self._angle_low = angle_low_limit
+        self._angle = self._angle_low = angle_low_limit
         self._angle_high = angle_high_limit
 
     def in_range(self, angle):
@@ -24,6 +24,7 @@ class Link:
     def set_angle(self, angle):
         self._angle = angle
 
+
 class InverseIK:
     def __init__(self):
         self.L0 = None  # Link 0: Shoulder
@@ -31,6 +32,13 @@ class InverseIK:
         self.L2 = None  # Link 2: Forearm
         self.L3 = None  # Link 3: Hand
         self.current_phi = None
+
+    def init_braccio(self):
+        self.attach(
+            Link(0, b2a(0.0), b2a(180.0)),
+            Link(130, b2a(0.0), b2a(162.0)),
+            Link(125, b2a(0.0), b2a(188.0)),
+            Link(65, b2a(0.0), b2a(184.0)))
 
     def attach(self, shoulder, upperarm, forearm, hand):
         self.L0 = shoulder
@@ -52,6 +60,32 @@ class InverseIK:
         # Solve the angle of the base
         _r = math.sqrt(x * x + y * y)
         base = math.atan2(y, x)
+
+        # Check the range of the base
+        if not self.L0.in_range(base):
+            # If not in range, flip the angle
+            base += math.pi if base < 0 else -math.pi
+            _r *= -1
+            if phi != 0:
+                phi = math.pi - phi
+
+        # Solve XY (RZ) for the arm plane
+        if phi == 0:
+            result = self._solve_free_phi(_r, z - self.L0.get_length())
+        else:
+            result = self._solve_fixed_phi(_r, z - self.L0.get_length(), phi)
+
+        if not result:
+            return False
+
+        shoulder, elbow, wrist = result
+
+        # If there is a solution, return the angles
+        return base, shoulder, elbow, wrist
+
+    def solve_semipolar(self, alpha, y, z, phi=0):
+        _r = y
+        base = alpha
 
         # Check the range of the base
         if not self.L0.in_range(base):

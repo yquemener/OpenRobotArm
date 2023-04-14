@@ -1,13 +1,18 @@
+from threading import Thread, Lock
+from time import sleep
+
 import serial
 from PyQt5 import uic
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QPushButton, QHBoxLayout, QWidget, QLabel, QSlider, QSpacerItem, QSizePolicy, \
-    QLineEdit
+    QLineEdit, QVBoxLayout
 from pyrender import Renderer
 from PyQt5.QtOpenGL import *
 from urdfpy import URDF
 import pyrender
 import numpy as np
+import trimesh
+from IK import InverseIK
 
 
 def compute_initial_camera_pose(scene):
@@ -32,9 +37,67 @@ def create_direct_light():
     n = pyrender.Node(light=light, matrix=np.eye(4))
     return n
 
+
+class SliderWithLineEdit(QWidget):
+    valueChanged = pyqtSignal(float)
+
+    def __init__(self, value_text, min_value, max_value, initial_value=None):
+        super().__init__()
+
+        self.value_text = value_text
+        self.min_value = min_value
+        self.max_value = max_value
+
+        # Create the slider
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setMinimum(self.min_value)
+        self.slider.setMaximum(self.max_value)
+        self.slider.setTickPosition(QSlider.TicksBelow)
+        self.slider.valueChanged.connect(self.on_value_changed)
+
+        # Create the label
+        self.label = QLabel(value_text)
+
+        # Create the line edit
+        self.line_edit = QLineEdit()
+        self.line_edit.setMaximumWidth(50)
+        self.line_edit.editingFinished.connect(self.update_slider)
+
+        if initial_value is not None:
+            self.slider.setValue(initial_value)
+            self.line_edit.setText(str(initial_value))
+
+        # Create the layouts
+        slider_layout = QHBoxLayout()
+        slider_layout.addWidget(self.label)
+        slider_layout.addWidget(self.slider)
+        slider_layout.addWidget(self.line_edit)
+
+        main_layout = QVBoxLayout()
+        main_layout.addLayout(slider_layout)
+
+        self.setLayout(main_layout)
+
+    def on_value_changed(self, value):
+        self.line_edit.setText(str(value))
+        self.valueChanged.emit(float(value))
+
+    def update_slider(self):
+        try:
+            new_value = float(self.line_edit.text())
+            if self.min_value <= new_value <= self.max_value:
+                self.slider.setValue(int(new_value))
+        except ValueError:
+            pass
+
+    def value(self):
+        return float(self.slider.value())
+
+
 class WGL(QGLWidget):
-    def __init__(self, parent):
+    def __init__(self, parent, target_position=(0.2, 0, 0)):
         QGLWidget.__init__(self, parent)
+        self.target_position = np.array(target_position)
 
     def paintGL(self):
         self.renderer.render(self.scene, 0)
@@ -55,6 +118,16 @@ class WGL(QGLWidget):
             mesh = pyrender.Mesh.from_trimesh(tm, smooth=False)
             self.scene.add(mesh, pose=pose)
 
+        # Add a red sphere at target_position
+        sphere = trimesh.creation.icosphere(subdivisions=3, radius=0.01)
+        sphere.visual.vertex_colors = [255, 0, 0, 255]
+        sphere_mesh = pyrender.Mesh.from_trimesh(sphere)
+        sphere_node = pyrender.Node(mesh=sphere_mesh, matrix=np.eye(4))
+        self.scene.add_node(sphere_node)
+        pose = np.eye(4)
+        pose[:3, 3] = self.target_position
+        self.scene.set_pose(sphere_node, pose)
+
         self.scene._default_persp_cam = pyrender.PerspectiveCamera(
             yfov=np.pi / 3.0, znear=0.05, zfar=100.
         )
@@ -66,7 +139,6 @@ class WGL(QGLWidget):
 
         self.scene.add_node(_camera_node)
         self.scene.main_camera_node = _camera_node
-
         self.scene.add_node(create_direct_light())
 
 
@@ -90,29 +162,43 @@ class App(QApplication):
 
         self.form.jointsSlider = dict()
         self.form.jointsLineEdit = dict()
-        for irow, joint in enumerate(self.form.openGLWidget.robot.actuated_joints):
-            self.form.tabJoints.layout().addWidget(QLabel(f"{joint.name}"), irow, 0)
-            slider = QSlider(Qt.Orientation.Horizontal)
+        soft_start_pose={
+            'base': 90,
+            'shoulder': 45,
+            'elbow': 180,
+            'wrist_pitch': 0,
+            'wrist_roll': 90,
+            'gripper_movable': 73
+        }
+        for joint in self.form.openGLWidget.robot.actuated_joints:
+            slider = SliderWithLineEdit(joint.name,
+                                        int(180*joint.limit.lower/np.pi),
+                                        int(180*joint.limit.upper/np.pi),
+                                        soft_start_pose.get(joint.name, int(180*joint.limit.lower/np.pi)))
             slider.valueChanged.connect(self.updatePose)
-            slider.setMinimum(int(180*joint.limit.lower/np.pi))
-            slider.setMaximum(int(180*joint.limit.upper/np.pi))
             self.form.jointsSlider[joint.name] = slider
-            self.form.tabJoints.layout().addWidget(slider, irow, 1)
-
-            lEdit = QLineEdit()
-            lEdit.setMaximumSize(40, 1000)
-            lEdit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            self.form.jointsLineEdit[joint.name] = lEdit
-            self.form.tabJoints.layout().addWidget(lEdit, irow, 2)
+            self.form.groupJoints.layout().insertWidget(-1, slider)
             print(joint.name)
-        self.form.tabJoints.layout().addItem(QSpacerItem(1,1,QSizePolicy.Minimum, QSizePolicy.Expanding), irow+1, 1)
+
+        self.form.groupIK.layout().insertWidget(-1, SliderWithLineEdit("Alpha", 0, 180, 90))
+        self.form.groupIK.layout().insertWidget(-1, SliderWithLineEdit("Distance", 0, 200, 150))
+        self.form.groupIK.layout().insertWidget(-1, SliderWithLineEdit("Hauteur", -30, 60, 10))
+        self.form.groupIK.layout().addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Expanding))
+
         self.form.button_connect.clicked.connect(self.connect)
+        self.ik = InverseIK()
+        self.ik.init_braccio()
+
+        self.serial = None
+        self.serial_dev = None
+        self.serial_lock = Lock()
+
+        self.old_values = None
+        self.updatePose()
         self.window.show()
 
     def updatePose(self, *args):
         cfg = {name: 3.15159*slider.value()/180.0 for name, slider in self.form.jointsSlider.items()}
-        for name, slider in self.form.jointsSlider.items():
-            self.form.jointsLineEdit[name].setText(f"{slider.value()}")
         self.form.openGLWidget.updateScene(cfg)
         self.form.openGLWidget.update()
 
@@ -149,11 +235,43 @@ class App(QApplication):
         if not success:
             self.serial = None
         else:
-            if not self.amperes_thread_running:
-                self.amperes_thread_running = True
-                self.amperes_thread.start()
             self.form.label_connectionStatus.setText(f"Connected on \n{self.serial_dev}")
             self.serial.timeout = 0.1
+            Thread(target=self.send_thread_func).start()
+
+    def send_thread_func(self):
+        while self.form.label_connectionStatus.text().startswith("Connected"):
+            sleep(0.1)
+            self.send()
+
+    def send(self):
+        if self.serial is None:
+            return
+        values = [self.form.jointsSlider[i].value() for i in ['base',
+                                                              'shoulder',
+                                                              'elbow',
+                                                              'wrist_pitch',
+                                                              'wrist_roll',
+                                                              'gripper_movable']] + [0,0]
+
+        if self.old_values != values:
+            self.send_values(values)
+
+    def send_values(self, values):
+        if self.serial is None:
+            return
+        if not self.serial_lock.acquire(True, 0.1):
+            print("Timeout")
+            return
+        if self.serial.out_waiting == 0:
+            print(" ".join([str(int(i)) for i in values]))
+            b = bytes([255, ord('G')] + [int(x) for x in values])
+            # b = bytes([255, ord('G')]) + bytes(" ".join([str(int(i)) for i in values])+" ", "utf-8")
+            self.serial.write(b)
+            self.serial.flush()
+            self.old_values = values
+        self.serial_lock.release()
+
 
 class Ui_MainWindow(QWidget):
     def __init__(self, parent=None):
@@ -166,14 +284,6 @@ class Ui_MainWindow(QWidget):
         mainLayout.addWidget(self.button)
         self.setLayout(mainLayout)
 
+
 app = App()
 app.exec_()
-
-
-
-
-
-
-
-# r.show(cfg={'shoulder':1.5, 'elbow':0.5})
-# r.animate(cfg_trajectory={'shoulder' : [0, 1.5],'elbow' : [0, 1.5],})
