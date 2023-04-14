@@ -6,6 +6,10 @@ def b2a(b):
     return b / 180.0 * math.pi - (math.pi / 2)
 
 
+def a2b(a):
+    return round((a + math.pi/2) * 180 / math.pi)
+
+
 class Link:
     def __init__(self, length, angle_low_limit, angle_high_limit):
         self._length = length
@@ -31,7 +35,7 @@ class InverseIK:
         self.L1 = None  # Link 1: Upper arm
         self.L2 = None  # Link 2: Forearm
         self.L3 = None  # Link 3: Hand
-        self.current_phi = None
+        self.current_phi = 0
 
     def init_braccio(self):
         self.attach(
@@ -109,7 +113,7 @@ class InverseIK:
         # If there is a solution, return the angles
         return base, shoulder, elbow, wrist
 
-    def _solve_fixed_phi(self, x, y, phi, shoulder, elbow, wrist):
+    def _solve_fixed_phi(self, x, y, phi):
         # Adjust coordinate system for base as ground plane
         _r = math.sqrt(x * x + y * y)
         _theta = math.atan2(y, x)
@@ -159,18 +163,19 @@ class InverseIK:
         return shoulder, elbow, wrist
 
     def _solve_free_phi(self, x, y):
-        success, shoulder, elbow, wrist = self._solve_fixed_phi(x, y, self.current_phi)
+        ret = self._solve_fixed_phi(x, y, self.current_phi)
 
-        if success:
-            return shoulder, elbow, wrist
+        if ret != False:
+            return ret
 
         degree_step = 0.0174533  # Approximately 1 degree in radians
         double_pi = 2 * math.pi
 
-        for phi in range(-double_pi, double_pi, degree_step):
-            success, shoulder, elbow, wrist = self._solve_fixed_phi(x, y, phi)
+        for i in range(int(double_pi*2/degree_step)):
+            phi = -double_pi + i*degree_step
+            ret = self._solve_fixed_phi(x, y, phi)
 
-            if success:
+            if ret != False:
                 self.current_phi = phi
-                return shoulder, elbow, wrist
+                return ret
         return False

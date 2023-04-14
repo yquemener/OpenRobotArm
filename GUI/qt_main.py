@@ -12,8 +12,16 @@ from urdfpy import URDF
 import pyrender
 import numpy as np
 import trimesh
-from IK import InverseIK
+from IK import InverseIK, b2a, a2b
 
+soft_start_pose = {
+    'base': 90,
+    'shoulder': 45,
+    'elbow': 180,
+    'wrist_pitch': 0,
+    'wrist_roll': 90,
+    'gripper_movable': 73
+}
 
 def compute_initial_camera_pose(scene):
     # centroid = scene.centroid
@@ -161,15 +169,8 @@ class App(QApplication):
         # self.form.openGLWidget.initializeGL()
 
         self.form.jointsSlider = dict()
-        self.form.jointsLineEdit = dict()
-        soft_start_pose={
-            'base': 90,
-            'shoulder': 45,
-            'elbow': 180,
-            'wrist_pitch': 0,
-            'wrist_roll': 90,
-            'gripper_movable': 73
-        }
+        self.form.targetSlider = dict()
+
         for joint in self.form.openGLWidget.robot.actuated_joints:
             slider = SliderWithLineEdit(joint.name,
                                         int(180*joint.limit.lower/np.pi),
@@ -180,9 +181,13 @@ class App(QApplication):
             self.form.groupJoints.layout().insertWidget(-1, slider)
             print(joint.name)
 
-        self.form.groupIK.layout().insertWidget(-1, SliderWithLineEdit("Alpha", 0, 180, 90))
-        self.form.groupIK.layout().insertWidget(-1, SliderWithLineEdit("Distance", 0, 200, 150))
-        self.form.groupIK.layout().insertWidget(-1, SliderWithLineEdit("Hauteur", -30, 60, 10))
+        for name, minv, maxv, default in [("Alpha", 0, 180, 90),
+                                          ("Distance", 120, 250, 180),
+                                          ("Hauteur", -80, 100, 50)]:
+            slider = SliderWithLineEdit(name, minv, maxv, default)
+            self.form.groupIK.layout().insertWidget(-1, slider)
+            self.form.targetSlider[name] = slider
+            slider.valueChanged.connect(self.updateTarget)
         self.form.groupIK.layout().addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Expanding))
 
         self.form.button_connect.clicked.connect(self.connect)
@@ -201,6 +206,17 @@ class App(QApplication):
         cfg = {name: 3.15159*slider.value()/180.0 for name, slider in self.form.jointsSlider.items()}
         self.form.openGLWidget.updateScene(cfg)
         self.form.openGLWidget.update()
+
+    def updateTarget(self):
+        base = b2a(float(self.form.targetSlider["Alpha"].value()))
+        dist = float(self.form.targetSlider["Distance"].value())
+        z = float(self.form.targetSlider["Hauteur"].value())
+        b,s,e,w = self.ik.solve_semipolar(base, dist, z)
+        print(b, s, e, w)
+        self.form.jointsSlider["base"].slider.setValue(int(a2b(b)))
+        self.form.jointsSlider["shoulder"].slider.setValue(int(a2b(s)))
+        self.form.jointsSlider["elbow"].slider.setValue(int(a2b(e)))
+        self.form.jointsSlider["wrist_pitch"].slider.setValue(int(a2b(w)))
 
     def connect(self):
         self.form.label_connectionStatus.setText("Connecting")
