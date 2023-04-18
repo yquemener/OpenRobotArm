@@ -29,10 +29,12 @@ class CameraWidget(QtWidgets.QWidget):
         self._combo_box.currentIndexChanged.connect(self._change_camera)
 
         self._scale_box = QtWidgets.QComboBox(self)
+        self._scale_box.addItem("None")
         self._scale_box.addItem("Full")
         self._scale_box.addItem("Half")
         self._scale_box.addItem("Quarter")
         self._scale_box.currentTextChanged.connect(self._update_display_scale)
+
 
         self._start_button = QtWidgets.QPushButton("Start Video", self)
         self._start_button.clicked.connect(self._start_video)
@@ -54,23 +56,21 @@ class CameraWidget(QtWidgets.QWidget):
         layout.addLayout(top_layout)
 
         # Add spacers to center the label
-        v_spacer = QtWidgets.QSpacerItem(0, 0, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         h_spacer = QtWidgets.QSpacerItem(0, 0, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        layout.addItem(v_spacer)
         layout.addWidget(self._display_label, alignment=QtCore.Qt.AlignCenter)
-        layout.addItem(v_spacer)
         layout.addItem(h_spacer)
 
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._update_frame)
 
-        self._capture_thread = QtCore.QThread(self)
-        self._capture_thread.started.connect(self._capture_frames)
         self.new_frame.connect(self._update_display)
         self.new_frame.connect(self.np_frame)
 
         self._display_scale = 1
         self._last_frame = None
+        self._current_frame = None
+
+        self._update_display_scale("None")
 
     def _get_connected_cameras(self):
         cameras = []
@@ -111,9 +111,15 @@ class CameraWidget(QtWidgets.QWidget):
     def _update_frame(self):
         ret, frame = self._camera.read()
         if ret:
+            self._current_frame = frame
             self.new_frame.emit(frame)
 
     def _update_display_scale(self, text):
+        if text == "None":
+            self._display_label.hide()
+        else:
+            self._display_label.show()
+
         if text == "Full":
             self._display_scale = 1
         elif text == "Half":
@@ -125,13 +131,14 @@ class CameraWidget(QtWidgets.QWidget):
         width = int(640 * self._display_scale)
         height = int(480 * self._display_scale)
         self._display_label.setMinimumSize(width, height)
+        self.resize(width, height + self._combo_box.height())
 
         # Update the display with the last frame
         self._update_display(self._last_frame)
 
     def _update_display(self, frame):
         self._last_frame = frame
-        if frame is not None:
+        if frame is not None and self._display_scale is not None:
             height, width, channel = frame.shape
             scaled_img = cv2.resize(frame, (int(width * self._display_scale), int(height * self._display_scale)))
             scaled_img = cv2.cvtColor(scaled_img, cv2.COLOR_BGR2RGB)
@@ -139,23 +146,11 @@ class CameraWidget(QtWidgets.QWidget):
             pixmap = QtGui.QPixmap.fromImage(qimg)
             self._display_label.setPixmap(pixmap)
 
-    def _capture_frames(self):
-        if self._camera:
-            while True:
-                ret, frame = self._camera.read()
-                if ret:
-                    self.new_frame.emit(frame)
-
-    def np_frame(self, frame):
-        return np.asarray(frame)
-
-    def start_capture_thread(self):
-        self.moveToThread(self._capture_thread)
-        self._capture_thread.start()
+    def np_frame(self):
+        return np.asarray(cv2.cvtColor(self._current_frame, cv2.COLOR_BGR2RGB))
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     widget = CameraWidget()
-    widget.start_capture_thread()
     widget.show()
     sys.exit(app.exec_())
