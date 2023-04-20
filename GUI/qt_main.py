@@ -170,7 +170,7 @@ class App(QApplication):
         # self.form.openGLWidget.paintGL = types.MethodType(paintGL, self.form.openGLWidget)
         # self.form.openGLWidget.initializeGL = types.MethodType(initializeGL, self.form.openGLWidget)
         self.form.openGLWidget = WGL(self.form.GLparent)
-        self.form.openGLWidget.robot = URDF.load('/home/yves/tmp/urdfpy/tests/data/ur5/braccio.urdf')
+        self.form.openGLWidget.robot = URDF.load('urdf//braccio.urdf')
         self.form.openGLWidget.updateScene({'elbow': 0.5})
         self.form.openGLWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
