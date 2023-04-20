@@ -1,6 +1,10 @@
 from threading import Thread, Lock
 from time import sleep
 
+import torch
+from PIL import Image
+from skimage.transform import resize
+
 import serial
 from PyQt5 import uic
 from PyQt5.QtCore import Qt, pyqtSignal
@@ -8,11 +12,15 @@ from PyQt5.QtWidgets import QApplication, QPushButton, QHBoxLayout, QWidget, QLa
     QLineEdit, QVBoxLayout
 from pyrender import Renderer
 from PyQt5.QtOpenGL import *
+from torchvision.transforms import transforms
 from urdfpy import URDF
 import pyrender
 import numpy as np
 import trimesh
 from IK import InverseIK, b2a, a2b
+from VideoWidget import CameraWidget
+from ModelLoaderWidget import ModelLoaderWidget
+from DetectionResultsWidget import DetectionWidget
 
 soft_start_pose = {
     'base': 90,
@@ -161,11 +169,22 @@ class App(QApplication):
 
         # self.form.openGLWidget.paintGL = types.MethodType(paintGL, self.form.openGLWidget)
         # self.form.openGLWidget.initializeGL = types.MethodType(initializeGL, self.form.openGLWidget)
-        self.form.openGLWidget = WGL(self.form.splitter)
+        self.form.openGLWidget = WGL(self.form.GLparent)
         self.form.openGLWidget.robot = URDF.load('/home/yves/tmp/urdfpy/tests/data/ur5/braccio.urdf')
-        self.form.openGLWidget.updateScene({'elbow':0.5})
-        self.form.openGLWidget.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Expanding)
-        self.form.verticalLayout.insertWidget(0,self.form.openGLWidget)
+        self.form.openGLWidget.updateScene({'elbow': 0.5})
+        self.form.openGLWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.form.detectionWidget = DetectionWidget()
+
+        self.form.cameraWidget = CameraWidget()
+        self.form.cameraWidget.new_frame.connect(self.on_new_frame)
+
+        self.form.verticalLayout.insertWidget(0, self.form.openGLWidget)
+        self.form.verticalLayout.insertWidget(0, self.form.detectionWidget)
+        self.form.verticalLayout.insertWidget(0, self.form.cameraWidget)
+        self.form.verticalLayout.setStretch(0, 0)
+        self.form.verticalLayout.setStretch(1, 1)
+        self.form.verticalLayout.setStretch(2, 1)
         # self.form.openGLWidget.initializeGL()
 
         self.form.jointsSlider = dict()
@@ -188,6 +207,8 @@ class App(QApplication):
             self.form.groupIK.layout().insertWidget(-1, slider)
             self.form.targetSlider[name] = slider
             slider.valueChanged.connect(self.updateTarget)
+        self.form.modelLoader = ModelLoaderWidget()
+        self.form.groupIK.layout().insertWidget(-1, self.form.modelLoader)
         self.form.groupIK.layout().addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Expanding))
 
         self.form.button_connect.clicked.connect(self.connect)
@@ -201,6 +222,43 @@ class App(QApplication):
         self.old_values = None
         self.updatePose()
         self.window.show()
+
+    def on_new_frame(self, frame):
+        np_frame = self.form.cameraWidget.np_frame()
+        self.form.detectionWidget.set_frame(np_frame)
+
+        transform = transforms.Compose([
+            transforms.Resize((512, 512)),
+            transforms.ToTensor(),
+        ])
+
+        image = Image.fromarray(np.uint8(np_frame)).convert('RGB')
+        image = transform(image)
+        print(image.max(), image.min())
+        # image = torch.Tensor(resize(np_frame, (512, 512)))
+        with torch.no_grad():
+            image = image.unsqueeze(0).cuda()
+            preds = self.form.modelLoader.loaded_model(image)
+
+        segments = list()
+        # TODO: put this constant in a sensible variable
+        grid_size = 16
+        mult = np.array(np_frame.shape[:2])/grid_size
+        for b in range(preds.size(0)):
+            for i in range(grid_size):
+                for j in range(grid_size):
+                    if preds[b, i, j, 0] > 0.75:
+                        off = np.array((j,i))
+                        point1 = (off+(preds[b, i, j, 1:3].cpu().numpy()+0.5)) * mult
+                        point2 = point1 + preds[b, i, j, 3:5].cpu().numpy()*np_frame.shape[:2]
+                        segments.append(['SEGMENT'] + [int(a) for a in np.concatenate([point1, point2]).tolist()])
+        self.form.detectionWidget.set_detection(segments)
+
+        # o=np.zeros_like(original_image)
+        # visualized_image = visualize_results(original_image, segments)
+        # display(PIL.Image.fromarray(visualized_image))
+
+
 
     def updatePose(self, *args):
         cfg = {name: 3.15159*slider.value()/180.0 for name, slider in self.form.jointsSlider.items()}
