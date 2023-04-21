@@ -206,7 +206,15 @@ class App(QApplication):
             slider = SliderWithLineEdit(name, minv, maxv, default)
             self.form.groupIK.layout().insertWidget(-1, slider)
             self.form.targetSlider[name] = slider
-            slider.valueChanged.connect(self.updateTarget)
+            slider.valueChanged.connect(self.updateTargetPolar)
+
+        for name, minv, maxv, default in [("X", -200, 200, 0),
+                                          ("Y", -200, 250, 150),
+                                          ("Z", -80, 100, 50)]:
+            slider = SliderWithLineEdit(name, minv, maxv, default)
+            self.form.groupXYZIK.layout().insertWidget(-1, slider)
+            self.form.targetSlider[name] = slider
+            slider.valueChanged.connect(self.updateTargetXYZ)
 
         self.form.pump_button = QPushButton("Magnet")
         self.form.pump_button.setCheckable(True)
@@ -260,19 +268,28 @@ class App(QApplication):
         #                 segments.append(['SEGMENT'] + [int(a) for a in np.concatenate([point1, point2]).tolist()])
         # self.form.detectionWidget.set_detection(segments)
 
-
-
     def updatePose(self, *args):
         cfg = {name: 3.15159*slider.value()/180.0 for name, slider in self.form.jointsSlider.items()}
         self.form.openGLWidget.updateScene(cfg)
         self.form.openGLWidget.update()
 
-
-    def updateTarget(self):
+    def updateTargetPolar(self):
         base = b2a(float(self.form.targetSlider["Alpha"].value()))
         dist = float(self.form.targetSlider["Distance"].value())
         z = float(self.form.targetSlider["Hauteur"].value())
         b,s,e,w = self.ik.solve_semipolar(base, dist, z)
+        # b,s,e,w = self.ik.solve(base, dist, z)
+
+        self.form.jointsSlider["base"].slider.setValue(int(a2b(b)))
+        self.form.jointsSlider["shoulder"].slider.setValue(int(a2b(s)))
+        self.form.jointsSlider["elbow"].slider.setValue(int(a2b(e)))
+        self.form.jointsSlider["wrist_pitch"].slider.setValue(int(a2b(w)))
+
+    def updateTargetXYZ(self):
+        x = float(self.form.targetSlider["X"].value())
+        y = float(self.form.targetSlider["Y"].value())
+        z = float(self.form.targetSlider["Hauteur"].value())
+        b, s, e, w = self.ik.solve(x, y, z)
 
         self.form.jointsSlider["base"].slider.setValue(int(a2b(b)))
         self.form.jointsSlider["shoulder"].slider.setValue(int(a2b(s)))
@@ -344,7 +361,7 @@ class App(QApplication):
             print("Timeout")
             return
         if self.serial.out_waiting == 0:
-            print(" ".join([str(int(i)) for i in values]))
+            # print(" ".join([str(int(i)) for i in values]))
             b = bytes([255, ord('G')] + [int(x) for x in values])
             # b = bytes([255, ord('G')]) + bytes(" ".join([str(int(i)) for i in values])+" ", "utf-8")
             self.serial.write(b)

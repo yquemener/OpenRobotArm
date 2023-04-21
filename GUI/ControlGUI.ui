@@ -61,7 +61,15 @@
           <enum>Qt::Horizontal</enum>
          </property>
          <widget class="QWidget" name="verticalLayoutWidget_2">
-          <layout class="QVBoxLayout" name="verticalLayout_2" stretch="0,0">
+          <layout class="QVBoxLayout" name="verticalLayout_2" stretch="0,0,0">
+           <item>
+            <widget class="QGroupBox" name="groupXYZIK">
+             <property name="title">
+              <string>XYZ IK</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_5"/>
+            </widget>
+           </item>
            <item>
             <widget class="QGroupBox" name="groupJoints">
              <property name="sizePolicy">
@@ -85,7 +93,7 @@
               </sizepolicy>
              </property>
              <property name="title">
-              <string>Absolute IK</string>
+              <string>Semipolar IK</string>
              </property>
              <layout class="QVBoxLayout" name="verticalLayout_8"/>
             </widget>

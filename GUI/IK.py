@@ -172,9 +172,14 @@ class InverseIK:
         double_pi = 2 * math.pi
 
         for i in range(int(double_pi*2/degree_step)):
-            phi = -double_pi + i*degree_step
+            phi = -double_pi + i * degree_step
             ret = self._solve_fixed_phi(x, y, phi)
+            if ret != False:
+                self.current_phi = phi
+                return ret
 
+            phi = i*degree_step
+            ret = self._solve_fixed_phi(x, y, phi)
             if ret != False:
                 self.current_phi = phi
                 return ret
