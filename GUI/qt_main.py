@@ -9,7 +9,7 @@ import serial
 from PyQt5 import uic
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QPushButton, QHBoxLayout, QWidget, QLabel, QSlider, QSpacerItem, QSizePolicy, \
-    QLineEdit, QVBoxLayout
+    QLineEdit, QVBoxLayout, QMainWindow, QSplitter, QFrame, QGroupBox, QTabWidget
 from pyrender import Renderer
 from PyQt5.QtOpenGL import *
 from torchvision.transforms import transforms
@@ -158,17 +158,80 @@ class WGL(QGLWidget):
         self.scene.add_node(create_direct_light())
 
 
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("Arm Controller")
+        self.setGeometry(0, 0, 812, 731)
+
+        self.centralwidget = QWidget(self)
+        self.setCentralWidget(self.centralwidget)
+
+        self.verticalLayout_3 = QVBoxLayout(self.centralwidget)
+
+        self.horizontalLayout = QHBoxLayout()
+        self.verticalLayout_3.addLayout(self.horizontalLayout)
+
+        self.button_connect = QPushButton("Connect", self.centralwidget)
+        self.horizontalLayout.addWidget(self.button_connect)
+
+        self.label_connectionStatus = QLabel("Disconnected", self.centralwidget)
+        sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        self.label_connectionStatus.setSizePolicy(sizePolicy)
+        self.horizontalLayout.addWidget(self.label_connectionStatus)
+
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalLayout.addItem(self.horizontalSpacer)
+
+        self.horizontalFrame = QFrame(self.centralwidget)
+        self.verticalLayout_4 = QVBoxLayout(self.horizontalFrame)
+
+        self.splitter = QSplitter(Qt.Horizontal, self.horizontalFrame)
+
+        self.verticalLayoutWidget_2 = QWidget(self.splitter)
+        self.verticalLayout_2 = QVBoxLayout(self.verticalLayoutWidget_2)
+
+        self.groupJoints = QGroupBox("Joints", self.verticalLayoutWidget_2)
+        sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        self.groupJoints.setSizePolicy(sizePolicy)
+        self.verticalLayout_7 = QVBoxLayout(self.groupJoints)
+        self.verticalLayout_2.addWidget(self.groupJoints)
+
+        self.tabs_IK = QTabWidget(self.verticalLayoutWidget_2)
+        self.tabs_IK.setCurrentIndex(0)
+        self.tab_IK_semipolar = QWidget()
+        self.tabs_IK.addTab(self.tab_IK_semipolar, "IK semipolar")
+        self.verticalLayout_6 = QVBoxLayout(self.tab_IK_semipolar)
+
+        self.tab_IK_XYZ = QWidget()
+        self.tabs_IK.addTab(self.tab_IK_XYZ, "IK XYZ")
+        self.verticalLayout_9 = QVBoxLayout(self.tab_IK_XYZ)
+
+        self.verticalLayout_2.addWidget(self.tabs_IK)
+
+        self.verticalLayoutWidget = QWidget(self.splitter)
+        self.verticalLayout = QVBoxLayout(self.verticalLayoutWidget)
+
+        self.GLparent = QFrame(self.verticalLayoutWidget)
+        self.GLparent.setFrameShape(QFrame.StyledPanel)
+        self.GLparent.setFrameShadow(QFrame.Raised)
+        self.verticalLayout.addWidget(self.GLparent)
+
+        self.verticalLayout_4.addWidget(self.splitter)
+        self.verticalLayout_3.addWidget(self.horizontalFrame)
+
+
 class App(QApplication):
     def __init__(self):
         super().__init__([])
-        Form, Window = uic.loadUiType("ControlGUI.ui")
-        self.window = Window()
 
-        self.form = Form()
-        self.form.setupUi(self.window)
+        self.form = MainWindow()
 
-        # self.form.openGLWidget.paintGL = types.MethodType(paintGL, self.form.openGLWidget)
-        # self.form.openGLWidget.initializeGL = types.MethodType(initializeGL, self.form.openGLWidget)
         self.form.openGLWidget = WGL(self.form.GLparent)
         self.form.openGLWidget.robot = URDF.load('urdf//braccio.urdf')
         self.form.openGLWidget.updateScene({'elbow': 0.5})
@@ -204,7 +267,7 @@ class App(QApplication):
                                           ("Distance", 120, 250, 180),
                                           ("Hauteur", -80, 100, 50)]:
             slider = SliderWithLineEdit(name, minv, maxv, default)
-            self.form.groupIK.layout().insertWidget(-1, slider)
+            self.form.tab_IK_semipolar.layout().insertWidget(-1, slider)
             self.form.targetSlider[name] = slider
             slider.valueChanged.connect(self.updateTargetPolar)
 
@@ -212,7 +275,7 @@ class App(QApplication):
                                           ("Y", -200, 250, 150),
                                           ("Z", -80, 100, 50)]:
             slider = SliderWithLineEdit(name, minv, maxv, default)
-            self.form.groupXYZIK.layout().insertWidget(-1, slider)
+            self.form.tab_IK_XYZ.layout().insertWidget(-1, slider)
             self.form.targetSlider[name] = slider
             slider.valueChanged.connect(self.updateTargetXYZ)
 
@@ -234,7 +297,7 @@ class App(QApplication):
 
         self.old_values = None
         self.updatePose()
-        self.window.show()
+        self.form.show()
 
     def on_new_frame(self, frame):
         np_frame = self.form.cameraWidget.np_frame()
@@ -368,18 +431,6 @@ class App(QApplication):
             self.serial.flush()
             self.old_values = values
         self.serial_lock.release()
-
-
-class Ui_MainWindow(QWidget):
-    def __init__(self, parent=None):
-        super(Ui_MainWindow, self).__init__()
-        self.GLview = WGL(None)
-        self.GLview.robot = URDF.load('urdf/braccio.urdf')
-        self.button = QPushButton('Test', self)
-        mainLayout = QHBoxLayout()
-        mainLayout.addWidget(self.GLview)
-        mainLayout.addWidget(self.button)
-        self.setLayout(mainLayout)
 
 
 app = App()
