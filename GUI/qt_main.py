@@ -207,9 +207,14 @@ class App(QApplication):
             self.form.groupIK.layout().insertWidget(-1, slider)
             self.form.targetSlider[name] = slider
             slider.valueChanged.connect(self.updateTarget)
+
+        self.form.pump_button = QPushButton("Magnet")
+        self.form.pump_button.setCheckable(True)
+        self.form.verticalLayout_2.insertWidget(-1, self.form.pump_button)
+
         self.form.modelLoader = ModelLoaderWidget()
-        self.form.groupIK.layout().insertWidget(-1, self.form.modelLoader)
-        self.form.groupIK.layout().addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Expanding))
+        self.form.verticalLayout_2.insertWidget(-1, self.form.modelLoader)
+        self.form.verticalLayout_2.addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Expanding))
 
         self.form.button_connect.clicked.connect(self.connect)
         self.ik = InverseIK()
@@ -226,37 +231,34 @@ class App(QApplication):
     def on_new_frame(self, frame):
         np_frame = self.form.cameraWidget.np_frame()
         self.form.detectionWidget.set_frame(np_frame)
-
-        transform = transforms.Compose([
-            transforms.Resize((512, 512)),
-            transforms.ToTensor(),
-        ])
-
-        image = Image.fromarray(np.uint8(np_frame)).convert('RGB')
-        image = transform(image)
-        print(image.max(), image.min())
-        # image = torch.Tensor(resize(np_frame, (512, 512)))
-        with torch.no_grad():
-            image = image.unsqueeze(0).cuda()
-            preds = self.form.modelLoader.loaded_model(image)
-
-        segments = list()
-        # TODO: put this constant in a sensible variable
-        grid_size = 16
-        mult = np.array(np_frame.shape[:2])/grid_size
-        for b in range(preds.size(0)):
-            for i in range(grid_size):
-                for j in range(grid_size):
-                    if preds[b, i, j, 0] > 0.75:
-                        off = np.array((j,i))
-                        point1 = (off+(preds[b, i, j, 1:3].cpu().numpy()+0.5)) * mult
-                        point2 = point1 + preds[b, i, j, 3:5].cpu().numpy()*np_frame.shape[:2]
-                        segments.append(['SEGMENT'] + [int(a) for a in np.concatenate([point1, point2]).tolist()])
+        segments = self.form.modelLoader.process_image(np_frame)
         self.form.detectionWidget.set_detection(segments)
-
-        # o=np.zeros_like(original_image)
-        # visualized_image = visualize_results(original_image, segments)
-        # display(PIL.Image.fromarray(visualized_image))
+        #
+        # transform = transforms.Compose([
+        #     transforms.Resize((512, 512)),
+        #     transforms.ToTensor(),
+        # ])
+        #
+        # image = Image.fromarray(np.uint8(np_frame)).convert('RGB')
+        # image = transform(image)
+        # image = image / image.max()
+        # with torch.no_grad():
+        #     image = image.unsqueeze(0).cuda()
+        #     preds = self.form.modelLoader.loaded_model(image)
+        #
+        # segments = list()
+        # # TODO: put this constant in a sensible variable
+        # grid_size = 16
+        # mult = np.array(np_frame.shape[:2])/grid_size
+        # for b in range(preds.size(0)):
+        #     for i in range(grid_size):
+        #         for j in range(grid_size):
+        #             if preds[b, i, j, 0] > 0.75:
+        #                 off = np.array((j,i))
+        #                 point1 = (off+(preds[b, i, j, 1:3].cpu().numpy()+0.5)) * mult
+        #                 point2 = point1 + preds[b, i, j, 3:5].cpu().numpy()*np_frame.shape[:2]
+        #                 segments.append(['SEGMENT'] + [int(a) for a in np.concatenate([point1, point2]).tolist()])
+        # self.form.detectionWidget.set_detection(segments)
 
 
 
@@ -265,12 +267,13 @@ class App(QApplication):
         self.form.openGLWidget.updateScene(cfg)
         self.form.openGLWidget.update()
 
+
     def updateTarget(self):
         base = b2a(float(self.form.targetSlider["Alpha"].value()))
         dist = float(self.form.targetSlider["Distance"].value())
         z = float(self.form.targetSlider["Hauteur"].value())
         b,s,e,w = self.ik.solve_semipolar(base, dist, z)
-        print(b, s, e, w)
+
         self.form.jointsSlider["base"].slider.setValue(int(a2b(b)))
         self.form.jointsSlider["shoulder"].slider.setValue(int(a2b(s)))
         self.form.jointsSlider["elbow"].slider.setValue(int(a2b(e)))
@@ -327,6 +330,9 @@ class App(QApplication):
                                                               'wrist_pitch',
                                                               'wrist_roll',
                                                               'gripper_movable']] + [0,0]
+        if self.form.pump_button.isChecked():
+            values[-2] = 1
+            values[-1] = 1
 
         if self.old_values != values:
             self.send_values(values)

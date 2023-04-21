@@ -57,7 +57,7 @@ class DetectionWidget(QWidget):
         self.obj_list = obj_list
         self.list_widget.clear()
         for i, obj in enumerate(self.obj_list):
-            self.list_widget.addItem(f"{obj[0]} {obj[1:]}")
+            self.list_widget.addItem(f"{obj[0]} {[int(a) for a in obj[1:]]}")
         self.update_detection_objects()
 
     def update_detection_objects(self):
@@ -82,7 +82,7 @@ class DetectionWidget(QWidget):
             if obj[0] == 'SEGMENT':
                 item = QGraphicsLineItem(obj[1], obj[2], obj[3], obj[4])
                 item.setPen(pen)
-                self.scene.addEllipse(obj[1] - 2, obj[2] - 2, 4, 4)
+                self.scene.addEllipse(obj[1] - 5, obj[2] - 5, 10, 10, pen.color())
                 item.setPen(pen)
                 self.scene.addItem(item)
             elif obj[0] == 'POINT':
