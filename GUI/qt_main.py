@@ -408,9 +408,10 @@ class App(QApplication):
         x = float(self.form.targetSlider["X"].value())
         y = float(self.form.targetSlider["Y"].value())
         z = float(self.form.targetSlider["Z"].value())
+        phi = float(self.form.targetSlider["Phi"].value()) * math.pi / 180.
         self.form.openGLWidget.target_position = np.array((x,-y,z))/1000.
         self.updatePose()
-        b, s, e, w = self.ik.solve(x, y, z)
+        b, s, e, w = self.ik.solve(x, y, z, phi=phi)
 
         self.form.jointsSlider["base"].slider.setValue(int(r2d(b)))
         self.form.jointsSlider["shoulder"].slider.setValue(int(r2d(s)))

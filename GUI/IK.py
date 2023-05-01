@@ -8,6 +8,8 @@ def d2r(b):
 def r2d(a):
     return round(a * 180 / math.pi)
 
+def clamp(num, min_value=0., max_value=1.):
+   return max(min(num, max_value), min_value)
 
 class Link:
     def __init__(self, length, angle_low_limit, angle_high_limit):
@@ -62,26 +64,14 @@ class InverseIK:
     def solve(self, x, y, z, phi=0):
         # Solve the angle of the base
         _r = math.sqrt(x * x + y * y)
-        base = math.atan2(y, x)
+        base = math.atan2(y, x) + math.pi/2
 
-        # Check the range of the base
-        if not self.L0.in_range(base):
-            # If not in range, flip the angle
-            base += math.pi if base < 0 else -math.pi
-            _r *= -1
-            if phi != 0:
-                phi = math.pi - phi
-
-        # Solve XY (RZ) for the arm plane
-        if phi == 0:
-            result = self._solve_free_phi(_r, z - self.L0.get_length())
-        else:
-            result = self._solve_fixed_phi(_r, z - self.L0.get_length(), phi)
+        result = self.solve_semipolar_iv(base, _r, z - self.L0.get_length(), phi)
 
         if not result:
             return False
 
-        shoulder, elbow, wrist = result
+        base, shoulder, elbow, wrist = result
 
         # If there is a solution, return the angles
         return base, shoulder, elbow, wrist
@@ -118,15 +108,16 @@ class InverseIK:
 
         # shoulder to wrist distance
         s2w = math.sqrt(z ** 2 + _r ** 2)
-        elbow_angle = math.acos((self.L1._length**2 + self.L2._length**2-s2w**2)/(2*self.L1._length*self.L2._length))
+        elbow_angle = math.acos(clamp((self.L1._length**2 + self.L2._length**2-s2w**2)/(2*self.L1._length*self.L2._length)
+                                      , min_value=-1))
         elbow_angle -= math.pi / 2
         elbow_angle = max(min(elbow_angle, self.L2._angle_high), self.L2._angle_low)
 
 
         sigma = math.atan2(z, _r)
 
-        v_angle = math.acos((s2w ** 2 + self.L1._length ** 2 - self.L2._length ** 2) / (2 * self.L1._length * s2w))
-        w_angle = math.acos((s2w ** 2 + self.L2._length ** 2 - self.L1._length ** 2) / (2 * self.L2._length * s2w))
+        v_angle = math.acos(clamp((s2w ** 2 + self.L1._length ** 2 - self.L2._length ** 2) / (2 * self.L1._length * s2w),
+                                  min_value=-1))
 
         shoulder_angle = sigma + v_angle
         shoulder_angle = max(min(shoulder_angle, self.L1._angle_high), self.L1._angle_low)
@@ -134,7 +125,6 @@ class InverseIK:
         print("elbow", int(elbow_angle*180/3.14159))
         print("sigma", int(sigma * 180 / 3.14159))
         print("v", int(v_angle*180/3.14159))
-        print("w", int(w_angle * 180 / 3.14159))
         print("sa", int(shoulder_angle*180/3.14159))
 
 

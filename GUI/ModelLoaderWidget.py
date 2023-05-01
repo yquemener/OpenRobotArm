@@ -1,5 +1,7 @@
 import os
 import sys
+import traceback
+
 import numpy as np
 from pathlib import Path
 
@@ -98,6 +100,7 @@ class ModelLoaderWidget(QWidget):
                     self.model_type = "YOLO"
                 self.model_state_label.setText(Path(filepath).name + " loaded")
             except:
+                print(traceback.format_exc())
                 QMessageBox.warning(
                     self, "Error", "Unable to load model from selected file."
                 )
