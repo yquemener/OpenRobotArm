@@ -7,12 +7,20 @@ from PyQt5 import QtWidgets
 from collections import defaultdict
 
 
+class GraphicsScene(QGraphicsScene):
+    def __init__(self, parent=None):
+        QGraphicsScene.__init__(self, parent)
+
+    def mousePressEvent(self, event):
+        self.parent().on_click(event)
+
+
 class DetectionWidget(QWidget):
     def __init__(self):
         super().__init__()
 
         # Set up the QGraphicsScene and QGraphicsView
-        self.scene = QGraphicsScene()
+        self.scene = GraphicsScene(self)
         self.view = QGraphicsView(self.scene, self)
         # self.view.setFixedSize(640, 480)
 
@@ -39,6 +47,7 @@ class DetectionWidget(QWidget):
         self.background_item = self.scene.addPixmap(self.background_pixmap)
 
         self.obj_list = list()
+        self.mode = "Detection"
 
     def set_frame(self, img):
         # Validate the input
@@ -51,10 +60,11 @@ class DetectionWidget(QWidget):
         self.background_pixmap = QPixmap.fromImage(self.background_image)
         # Set the pixmap on the background item and fit it to the view
         self.background_item.setPixmap(self.background_pixmap)
-        self.view.fitInView(self.background_item, Qt.KeepAspectRatio)
+        # self.view.fitInView(self.background_item, Qt.KeepAspectRatio)
 
-    def set_detection(self, obj_list):
-        self.obj_list = obj_list
+    def set_detection(self, obj_list=None):
+        if obj_list is not None:
+            self.obj_list = obj_list
         self.list_widget.clear()
         for i, obj in enumerate(self.obj_list):
             self.list_widget.addItem(f"{obj[0]} {[int(a) for a in obj[1:]]}")
@@ -65,7 +75,6 @@ class DetectionWidget(QWidget):
         for item in self.scene.items():
             if not isinstance(item, QGraphicsPixmapItem):
                 self.scene.removeItem(item)
-
 
         # Set up the brushes and pens for drawing the objects
         default_pen = QPen(Qt.red)
@@ -105,3 +114,10 @@ class DetectionWidget(QWidget):
         else:
             self.selected_obj_index = None
         self.update_detection_objects()
+
+    def on_click(self, event):
+        x = event.scenePos().x()
+        y = event.scenePos().y()
+        if self.mode == "Calibration":
+            self.obj_list.append(["POINT", x, y])
+            self.set_detection(self.obj_list)

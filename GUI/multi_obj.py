@@ -90,7 +90,6 @@ def custom_yolo_loss(preds, targets, num_classes, alpha=1, beta=1, gamma=1):
 def draw_segments(image, detections, threshold=0.5, line_thickness=2):
     img = image.copy()
     height, width, _ = img.shape
-    print(detections.shape)
     grid_size = detections.shape[-1]
 
     for i in range(grid_size):

@@ -1,13 +1,12 @@
 import math
 
 
-# Quick conversion from the Braccio angle system to radians
-def b2a(b):
-    return b / 180.0 * math.pi - (math.pi / 2)
+def d2r(b):
+    return b / 180.0 * math.pi
 
 
-def a2b(a):
-    return round((a + math.pi/2) * 180 / math.pi)
+def r2d(a):
+    return round(a * 180 / math.pi)
 
 
 class Link:
@@ -39,10 +38,10 @@ class InverseIK:
 
     def init_braccio(self):
         self.attach(
-            Link(0, b2a(0.0), b2a(180.0)),
-            Link(130, b2a(0.0), b2a(162.0)),
-            Link(125, b2a(0.0), b2a(188.0)),
-            Link(65, b2a(0.0), b2a(184.0)))
+            Link(0, d2r(0.0), d2r(180.0)),
+            Link(130, d2r(0.0), d2r(162.0)),
+            Link(125, d2r(0.0), d2r(188.0)),
+            Link(65, d2r(0.0), d2r(184.0)))
 
     def attach(self, shoulder, upperarm, forearm, hand):
         self.L0 = shoulder
@@ -112,6 +111,43 @@ class InverseIK:
 
         # If there is a solution, return the angles
         return base, shoulder, elbow, wrist
+
+    def solve_semipolar_iv(self, alpha, y, z, phi=0):
+        _r = y
+        base = alpha
+
+        # shoulder to wrist distance
+        s2w = math.sqrt(z ** 2 + _r ** 2)
+        elbow_angle = math.acos((self.L1._length**2 + self.L2._length**2-s2w**2)/(2*self.L1._length*self.L2._length))
+        elbow_angle -= math.pi / 2
+        elbow_angle = max(min(elbow_angle, self.L2._angle_high), self.L2._angle_low)
+
+
+        sigma = math.atan2(z, _r)
+
+        v_angle = math.acos((s2w ** 2 + self.L1._length ** 2 - self.L2._length ** 2) / (2 * self.L1._length * s2w))
+        w_angle = math.acos((s2w ** 2 + self.L2._length ** 2 - self.L1._length ** 2) / (2 * self.L2._length * s2w))
+
+        shoulder_angle = sigma + v_angle
+        shoulder_angle = max(min(shoulder_angle, self.L1._angle_high), self.L1._angle_low)
+        print()
+        print("elbow", int(elbow_angle*180/3.14159))
+        print("sigma", int(sigma * 180 / 3.14159))
+        print("v", int(v_angle*180/3.14159))
+        print("w", int(w_angle * 180 / 3.14159))
+        print("sa", int(shoulder_angle*180/3.14159))
+
+
+
+        # elbow_angle = 2 * math.asin(s2w/(self.L1._length + self.L2._length))
+        # Angle between horizontal and the shoulder-wrist line
+        # m = math.atan2(z, _r)
+        # shoulder_angle = m + (math.pi/2 - (elbow_angle/2))
+        wrist_angle = 3*math.pi/2 - shoulder_angle - elbow_angle - phi
+
+
+
+        return base, shoulder_angle, elbow_angle, wrist_angle
 
     def _solve_fixed_phi(self, x, y, phi):
         # Adjust coordinate system for base as ground plane

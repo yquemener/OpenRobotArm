@@ -24,18 +24,16 @@
   <link name="link1">
     <visual>
       <geometry>
-        <mesh filename="/home/yves/tmp/urdfpy/tests/data/ur5/braccio_description/meshes/base.stl"/>
+        <mesh filename="base.stl"/>
       </geometry>
-        <material name="orange">
-    <color rgba="0.8 0.084 0 1"/>
-  </material>
+      <material name="orange"/> 
     </visual>
   </link>
 
   <link name="link2">
     <visual>
       <geometry>
-        <mesh filename="/home/yves/tmp/urdfpy/tests/data/ur5/braccio_description/meshes/shoulder.stl"/>
+        <mesh filename="shoulder.stl"/>
       </geometry>
       <material name="orange"/>
       <origin rpy="0 0 0" xyz="0 0 -0.0505"/> 
@@ -45,7 +43,7 @@
   <link name="link3">
     <visual>
       <geometry>
-        <mesh filename="/home/yves/tmp/urdfpy/tests/data/ur5/braccio_description/meshes/elbow.stl"/>
+        <mesh filename="elbow.stl"/>
       </geometry>
       <material name="orange"/>
       <origin rpy="0 0 0" xyz="0 0 -0.1705"/> 
@@ -55,7 +53,7 @@
   <link name="link4">
     <visual>
       <geometry>
-        <mesh filename="/home/yves/tmp/urdfpy/tests/data/ur5/braccio_description/meshes/wrist_pitch.stl"/>
+        <mesh filename="wrist_pitch.stl"/>
       </geometry>
       <material name="orange"/>
       <origin rpy="0 0 0" xyz="0 0 -0.2905"/> 
@@ -65,7 +63,7 @@
   <link name="link5">
     <visual>
       <geometry>
-        <mesh filename="/home/yves/tmp/urdfpy/tests/data/ur5/braccio_description/meshes/wrist_roll.stl"/>
+        <mesh filename="wrist_roll.stl"/>
       </geometry>
       <material name="white"/>
       <origin rpy="0 0 0" xyz="0 0 -0.3505"/> 
@@ -75,7 +73,7 @@
   <link name="gripper_base">
     <visual>
       <geometry>
-        <mesh filename="/home/yves/tmp/urdfpy/tests/data/ur5/braccio_description/meshes/gripper_base.stl"/>
+        <mesh filename="gripper_base.stl"/>
       </geometry>
       <material name="white"/>
       <origin rpy="0 0 0" xyz="0 0 -0.357"/> 
@@ -85,7 +83,7 @@
   <link name="gripper_fix">
     <visual>
       <geometry>
-        <mesh filename="/home/yves/tmp/urdfpy/tests/data/ur5/braccio_description/meshes/gripper_fix.stl"/>
+        <mesh filename="gripper_fix.stl"/>
       </geometry>
       <material name="white"/>
       <origin rpy="0 0 0" xyz="0 0 -0.36399"/> 
@@ -95,7 +93,7 @@
   <link name="gripper_movable">
     <visual>
       <geometry>
-        <mesh filename="/home/yves/tmp/urdfpy/tests/data/ur5/braccio_description/meshes/gripper_movable.stl"/>
+        <mesh filename="gripper_movable.stl"/>
       </geometry>
       <material name="white"/>
       <origin rpy="0 0 0" xyz="-0.01559 0 -0.36399"/> 

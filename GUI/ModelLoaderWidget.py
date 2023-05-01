@@ -112,7 +112,7 @@ class ModelLoaderWidget(QWidget):
             self.loaded_model.eval()
             with torch.no_grad():
                 res = self.loaded_model(image).xyxy[0]
-            for r in res:
+            for r in res.tolist():
                 results.append(["SEGMENT",
                                 r[0], r[1], r[0]+640*r[2], r[1]+480*r[3]])
 
