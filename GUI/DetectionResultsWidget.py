@@ -3,7 +3,7 @@ from PyQt5.QtCore import Qt, QRectF, QSize, QPoint
 from PyQt5.QtGui import QBrush, QColor, QPen, QPixmap, QImage
 from PyQt5.QtWidgets import QGraphicsScene, QGraphicsView, QListWidget, QListWidgetItem, QWidget, QGraphicsPixmapItem, \
     QGraphicsLineItem, QGraphicsRectItem, QHBoxLayout, QSplitter, QVBoxLayout
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtCore
 from collections import defaultdict
 
 
@@ -11,17 +11,33 @@ class GraphicsScene(QGraphicsScene):
     def __init__(self, parent=None):
         QGraphicsScene.__init__(self, parent)
 
-    def mousePressEvent(self, event):
-        self.parent().on_click(event)
+    def mouseMoveEvent(self, event):
+        if event.buttons() == QtCore.Qt.LeftButton:
+            self.parent().on_click(event) #test_click.emit(int(event.pos().x()), int(event.pos().y()))
+
+class GraphicsView(QGraphicsView):
+    def __init__(self, scene, parent):
+        QGraphicsView.__init__(self, scene, parent)
+        self.wparent = parent
+
+    # def mouseMoveEvent(self, event):
+    #     if event.buttons() == QtCore.Qt.LeftButton:
+    #         self.wparent.test_click.emit(int(event.pos().x()), int(event.pos().y()))
+    #         print("Left click drag")
 
 
 class DetectionWidget(QWidget):
+    test_click = QtCore.pyqtSignal(int, int)
     def __init__(self):
         super().__init__()
 
         # Set up the QGraphicsScene and QGraphicsView
         self.scene = GraphicsScene(self)
-        self.view = QGraphicsView(self.scene, self)
+        self.setMouseTracking(True)
+        self.view = GraphicsView(self.scene, self)
+        self.view.setMouseTracking(True)
+
+
         # self.view.setFixedSize(640, 480)
 
         # Set up the list widget
@@ -121,3 +137,5 @@ class DetectionWidget(QWidget):
         if self.mode == "Calibration":
             self.obj_list.append(["POINT", x, y])
             self.set_detection(self.obj_list)
+        if self.mode == "Test":
+            self.test_click.emit(int(x), int(y))

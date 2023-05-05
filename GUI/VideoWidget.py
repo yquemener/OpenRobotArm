@@ -74,7 +74,12 @@ class CameraWidget(QtWidgets.QWidget):
 
     def _get_connected_cameras(self):
         cameras = []
-        output = subprocess.check_output(["v4l2-ctl", "--list-devices"]).decode("utf-8")
+        result = subprocess.run(["v4l2-ctl", "--list-devices"], capture_output=True, text=True)
+
+        if result.returncode not in [0, 1]:  # Only allow successful return codes or code 1
+            raise subprocess.CalledProcessError(result.returncode, result.args)
+
+        output = result.stdout
         lines = output.strip().split("\n")
         i = 0
         while i < len(lines):

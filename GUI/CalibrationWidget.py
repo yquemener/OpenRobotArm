@@ -1,6 +1,7 @@
 import json
 import sys
 import unittest
+from math import sqrt
 
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QApplication
@@ -57,6 +58,25 @@ class CalibrationWidget(QWidget):
         self.list_widget.insertItem(index, f"2D: {point2d} -> 3D: {point3d}")
         self.save_matches()
 
+    # def to_3d(self, point2d):
+    #     if not self.matches:
+    #         raise ValueError("No matches available for interpolation")
+    #
+    #     points2d = np.array(self.points2d())
+    #     points3d = np.array(self.points3d())
+    #     kdtree = KDTree(points2d)
+    #     distances, indices = kdtree.query(point2d, k=4)
+    #
+    #     if distances[0] == 0:
+    #         return points3d[indices[0]]
+    #
+    #     weights = 1 / distances
+    #     weights /= np.sum(weights)
+    #
+    #     interpolated_point3d = np.dot(weights, points3d[indices])
+    #
+    #     return interpolated_point3d
+
     def to_3d(self, point2d):
         if not self.matches:
             raise ValueError("No matches available for interpolation")
@@ -64,15 +84,70 @@ class CalibrationWidget(QWidget):
         points2d = np.array(self.points2d())
         points3d = np.array(self.points3d())
         kdtree = KDTree(points2d)
-        distances, indices = kdtree.query(point2d, k=2)
+        distances, indices = kdtree.query(point2d, k=4)
 
-        if distances[0] == 0:
-            return points3d[indices[0]]
+        # Get the four closest points and their corresponding 3D points
+        P1, P2, P3, P4 = points2d[indices]
+        Q1, Q2, Q3, Q4 = points3d[indices]
 
-        weights = 1 / distances
-        weights /= np.sum(weights)
+        p2d = points2d[indices]
 
-        interpolated_point3d = np.dot(weights, points3d[indices])
+        tl = tr = bl = br = None
+        for p, pp in zip(p2d, points3d[indices]):
+            lp = np.sum(p2d[:, 0] > p[0])
+            tp = np.sum(p2d[:, 1] > p[1])
+            if lp > 1 and tp > 1:
+                tl = p
+                qtl=pp
+            elif lp < 2 and tp > 1:
+                tr = p
+                qtr=pp
+            elif lp > 1 and tp < 2:
+                bl = p
+                qbl = pp
+            elif lp < 2 and tp < 2:
+                br = p
+                qbr = pp
+
+        ca = tl-bl
+        ab = tr-tl
+        cd = br-bl
+        cp = bl-point2d
+
+        # polynome's factors:
+        a = cd[1]*(ab[0]-cd[0]) + cd[0]*(ab[1]-cd[1])
+        b = -cp[1]*(ab[0]-cd[0]) - cd[1]*ca[0]+cd[0]*ca[1] - cp[0]*(ab[1]-cd[1])
+        c = cp[1]*ca[0] - cp[0]*ca[1]
+
+        delta = b**2 - 4*a*c
+        #delta = ca[0] ** 2 - 4 * (ab[0] - cd[0]) * (bl[0] - point2d[0])
+        sol1x = (-b + sqrt(delta)) / (2 * a)
+        sol2x = (-b - sqrt(delta)) / (2 * a)
+
+        sol1y = (cp[0] - sol1x * cd[0]) / (ca[0] + sol1x * (ab[0] - cd[0]))
+        sol2y = (cp[0] - sol2x * cd[0]) / (ca[0] + sol2x * (ab[0] - cd[0]))
+        print(sol1x, sol1y)
+        print(sol2x, sol2y)
+        print()
+
+        if(abs(sol1x)<=1.):
+            solx = sol1x
+            soly = sol1y
+        elif(abs(sol2x)<=1.):
+            solx = sol2x
+            soly = sol2y
+        else:
+            print("No intrpolated solution")
+            return
+
+        print(tr,tl,br,bl)
+
+        weight1 = (1-solx)*(1-soly)
+        weight2 = solx*(1-soly)
+        weight3 = (1-solx) * soly
+        weight4 = solx * (1-soly)
+
+        interpolated_point3d = weight1 * qtl + weight2 * qtr + weight3 * qbl + weight4 * qbr
 
         return interpolated_point3d
 

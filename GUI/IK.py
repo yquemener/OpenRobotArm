@@ -121,22 +121,8 @@ class InverseIK:
 
         shoulder_angle = sigma + v_angle
         shoulder_angle = max(min(shoulder_angle, self.L1._angle_high), self.L1._angle_low)
-        print()
-        print("elbow", int(elbow_angle*180/3.14159))
-        print("sigma", int(sigma * 180 / 3.14159))
-        print("v", int(v_angle*180/3.14159))
-        print("sa", int(shoulder_angle*180/3.14159))
 
-
-
-        # elbow_angle = 2 * math.asin(s2w/(self.L1._length + self.L2._length))
-        # Angle between horizontal and the shoulder-wrist line
-        # m = math.atan2(z, _r)
-        # shoulder_angle = m + (math.pi/2 - (elbow_angle/2))
         wrist_angle = 3*math.pi/2 - shoulder_angle - elbow_angle - phi
-
-
-
         return base, shoulder_angle, elbow_angle, wrist_angle
 
     def _solve_fixed_phi(self, x, y, phi):

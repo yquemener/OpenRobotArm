@@ -24,6 +24,7 @@ from VideoWidget import CameraWidget
 from ModelLoaderWidget import ModelLoaderWidget
 from DetectionResultsWidget import DetectionWidget
 from CalibrationWidget import CalibrationWidget
+from ThreadedController import ThreadedController
 
 soft_start_pose = {
     'base': 90,
@@ -111,6 +112,9 @@ class SliderWithLineEdit(QWidget):
 
     def value(self):
         return float(self.slider.value())
+
+    def setValue(self, val):
+        self.slider.setValue(val)
 
 
 class WGL(QGLWidget):
@@ -241,6 +245,7 @@ class App(QApplication):
         self.form.openGLWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.form.detectionWidget = DetectionWidget()
+        self.form.detectionWidget.test_click.connect(self.on_test_click)
 
         self.form.cameraWidget = CameraWidget()
         self.form.cameraWidget.new_frame.connect(self.on_new_frame)
@@ -249,7 +254,7 @@ class App(QApplication):
         self.form.mode_buttons = QButtonGroup()
         self.form.mode_button_layout = QHBoxLayout()
 
-        for mode in ["Detection", "Calibration", "Acquisition", "Training"]:
+        for mode in ["Detection", "Calibration", "Acquisition", "Training", "Test"]:
             button = QRadioButton(mode)
             if mode == "Detection":
                 button.setChecked(True)  # This line selects the "Detection" button by default
@@ -278,7 +283,6 @@ class App(QApplication):
             slider.valueChanged.connect(self.updatePose)
             self.form.jointsSlider[joint.name] = slider
             self.form.groupJoints.layout().insertWidget(-1, slider)
-            print(joint.name)
 
         for name, minv, maxv, default in [("Alpha", 0, 180, 180),
                                           ("Distance", 120, 250, 180),
@@ -291,7 +295,8 @@ class App(QApplication):
 
         for name, minv, maxv, default in [("X", 0, 300, 0),
                                           ("Y", -200, 250, 150),
-                                          ("Z", -80, 100, 50)]:
+                                          ("Z", -80, 100, 50),
+                                          ("Phi_xyz", 0, 360, 180)]:
             slider = SliderWithLineEdit(name, minv, maxv, default)
             self.form.tab_IK_XYZ.layout().insertWidget(-1, slider)
             self.form.targetSlider[name] = slider
@@ -306,6 +311,10 @@ class App(QApplication):
         self.form.go_grab_button.clicked.connect(self.go_grab)
         self.form.actions_button_layout.insertWidget(-1, self.form.go_grab_button)
 
+        self.form.debug_button = QPushButton("Debug")
+        self.form.debug_button.clicked.connect(self.debug)
+        self.form.actions_button_layout.insertWidget(-1, self.form.debug_button)
+
         self.form.verticalLayout_2.insertLayout(-1, self.form.actions_button_layout)
 
         # Create the QTabWidget
@@ -313,6 +322,7 @@ class App(QApplication):
         self.form.modelLoader = ModelLoaderWidget()
         self.form.calibrationWidget = CalibrationWidget()
         self.form.calibrationWidget.add_button_clicked.connect(self.on_calibration_match_added)
+        self.form.calibrationWidget.list_widget.currentItemChanged.connect(self.on_calibration_select_point)
 
         # Add ModelLoaderWidget and CalibrationWidget as separate tabs
         self.form.tabWidget.addTab(self.form.modelLoader, "Model Loader")
@@ -325,6 +335,8 @@ class App(QApplication):
         self.form.button_connect.clicked.connect(self.connect)
         self.ik = InverseIK()
         self.ik.init_braccio()
+
+        self.controller = ThreadedController(self.form)
 
         self.serial = None
         self.serial_dev = None
@@ -342,6 +354,20 @@ class App(QApplication):
             self.mode = checked_button.text()
             self.form.detectionWidget.mode = self.mode
             print(f"Mode changed to: {self.mode}")
+            if self.mode == "Test":
+                points = list()
+                for p1 in [a[0] for a in self.form.calibrationWidget.matches]:
+                    for p2 in [a[0] for a in self.form.calibrationWidget.matches]:
+                        if p1 == p2:
+                            continue
+                        points.append([(p1[0]+p2[0])//2, (p1[1]+p2[1])//2])
+
+                objects = list()
+                for p1 in points:
+                    for p2 in points:
+                        objects.append(["SEGMENT", p1[0], p1[1], p2[0], p2[1]])
+
+                self.form.detectionWidget.set_detection(objects)
         else:
             self.mode = None
             print("No mode selected")
@@ -352,32 +378,6 @@ class App(QApplication):
         if self.mode == "Detection":
             segments = self.form.modelLoader.process_image(np_frame)
             self.form.detectionWidget.set_detection(segments)
-        #
-        # transform = transforms.Compose([
-        #     transforms.Resize((512, 512)),
-        #     transforms.ToTensor(),
-        # ])
-        #
-        # image = Image.fromarray(np.uint8(np_frame)).convert('RGB')
-        # image = transform(image)
-        # image = image / image.max()
-        # with torch.no_grad():
-        #     image = image.unsqueeze(0).cuda()
-        #     preds = self.form.modelLoader.loaded_model(image)
-        #
-        # segments = list()
-        # # TODO: put this constant in a sensible variable
-        # grid_size = 16
-        # mult = np.array(np_frame.shape[:2])/grid_size
-        # for b in range(preds.size(0)):
-        #     for i in range(grid_size):
-        #         for j in range(grid_size):
-        #             if preds[b, i, j, 0] > 0.75:
-        #                 off = np.array((j,i))
-        #                 point1 = (off+(preds[b, i, j, 1:3].cpu().numpy()+0.5)) * mult
-        #                 point2 = point1 + preds[b, i, j, 3:5].cpu().numpy()*np_frame.shape[:2]
-        #                 segments.append(['SEGMENT'] + [int(a) for a in np.concatenate([point1, point2]).tolist()])
-        # self.form.detectionWidget.set_detection(segments)
 
     def updatePose(self, *args):
         cfg = {name: 3.15159*slider.value()/180.0 for name, slider in self.form.jointsSlider.items()}
@@ -389,18 +389,10 @@ class App(QApplication):
         dist = float(self.form.targetSlider["Distance"].value())
         z = float(self.form.targetSlider["Hauteur"].value())
         phi = float(self.form.targetSlider["Phi"].value())*math.pi/180.
-        # b, s, e, w = self.ik.solve_semipolar(base, dist, z)
         b, s, e, w = self.ik.solve_semipolar_iv(base, dist, z, phi=phi)
-        # My IK fix:
-        # print(dist, phi)
-        # print(s,e,w)
-        # w = math.pi+phi-s-e
-        # print(w)
-        # b,s,e,w = self.ik.solve(base, dist, z)
 
         self.form.jointsSlider["base"].slider.setValue(int(r2d(b)))
         self.form.jointsSlider["shoulder"].slider.setValue(int(r2d(s)))
-        print(int(r2d(s)))
         self.form.jointsSlider["elbow"].slider.setValue(int(r2d(e)))
         self.form.jointsSlider["wrist_pitch"].slider.setValue(int(r2d(w)))
 
@@ -408,7 +400,7 @@ class App(QApplication):
         x = float(self.form.targetSlider["X"].value())
         y = float(self.form.targetSlider["Y"].value())
         z = float(self.form.targetSlider["Z"].value())
-        phi = float(self.form.targetSlider["Phi"].value()) * math.pi / 180.
+        phi = float(self.form.targetSlider["Phi_xyz"].value()) * math.pi / 180.
         self.form.openGLWidget.target_position = np.array((x,-y,z))/1000.
         self.updatePose()
         b, s, e, w = self.ik.solve(x, y, z, phi=phi)
@@ -460,18 +452,41 @@ class App(QApplication):
             sleep(0.1)
             self.send()
 
+
+    def get_pose(self):
+        pose = [self.form.jointsSlider[i].value() for i in ['base',
+                                                            'shoulder',
+                                                            'elbow',
+                                                            'wrist_pitch',
+                                                            'wrist_roll',
+                                                            'gripper_movable']] + [0, 0]
+        if self.form.pump_button.isChecked():
+            pose[6] = 1
+            pose[7] = 1
+        return pose
+
+    def debug(self):
+        pose = self.get_pose()
+
+        pose1 = pose[:]
+        pose1[0] += 45
+        pose1[6] = 1
+        pose1[7] = 1
+        pose2 = pose[:]
+        pose2[6] = 0
+        pose2[7] = 0
+
+
+        instructions = \
+            [["pose"]+pose1,
+             ["sleep", 3],
+             ["pose"]+pose2]
+        self.controller.add_instructions(instructions)
+
     def send(self):
         if self.serial is None:
             return
-        values = [self.form.jointsSlider[i].value() for i in ['base',
-                                                              'shoulder',
-                                                              'elbow',
-                                                              'wrist_pitch',
-                                                              'wrist_roll',
-                                                              'gripper_movable']] + [0,0]
-        if self.form.pump_button.isChecked():
-            values[-2] = 1
-            values[-1] = 1
+        values = self.get_pose()
 
         if self.old_values != values:
             self.send_values(values)
@@ -506,16 +521,49 @@ class App(QApplication):
         )
         self.form.calibrationWidget.add_match(p2d, p3d)
 
+    def on_calibration_select_point(self):
+        print(self.form.calibrationWidget.matches)
+        print(self.form.calibrationWidget.list_widget.currentRow())
+        a = self.form.calibrationWidget.matches[self.form.calibrationWidget.list_widget.currentRow()]
+        print(a)
+        self.form.detectionWidget.set_detection([["POINT", a[0][0], a[0][1]]])
+
+    def on_test_click(self, x, y):
+        p3d = self.form.calibrationWidget.to_3d([x, y])
+        print(x,y, p3d)
+        self.form.targetSlider["X"].setValue(int(p3d[0]))
+        self.form.targetSlider["Y"].setValue(int(p3d[1]))
+        self.form.targetSlider["Z"].setValue(int(p3d[2]))
+
+
+
     def go_grab(self):
         ol = self.form.detectionWidget.obj_list
         if len(ol) < 1:
             return
         target2d = (ol[0][1], ol[0][2])
         t3d = self.form.calibrationWidget.to_3d(target2d)
-        print(t3d)
-        self.form.targetSlider["X"].slider.setValue(int(t3d[0]))
-        self.form.targetSlider["Y"].slider.setValue(int(t3d[1]))
-        self.form.targetSlider["Z"].slider.setValue(int(t3d[2]))
+        pose1 = self.ik.solve(t3d[0], t3d[1], 80, phi=math.pi)
+        pose2 = self.ik.solve(t3d[0], t3d[1], t3d[2], phi=math.pi)
+        pose1 = [int(r2d(a)) for a in pose1]
+        pose2 = [int(r2d(a)) for a in pose2]
+
+        instructions = []
+        instructions.append(["pose"] + pose1 + [0,0,0,0])
+        instructions.append(["sleep", 2])
+
+        instructions.append(["pose"] + pose2 + [0,0,0,0])
+        instructions.append(["sleep", 1])
+        instructions.append(["pose"] + pose2 + [0,0,1,1])
+
+        b, s, e, w = self.ik.solve(t3d[0], t3d[1], 80, phi=math.pi)
+        instructions.append(["pose"] + pose1 + [0, 0, 1, 1])
+        instructions.append(["sleep", 1])
+
+        instructions.append(["pose"] + [pose1[0]+45]+pose1[1:] + [0,0,0,0])
+        instructions.append(["sleep", 2])
+
+        self.controller.add_instructions(instructions)
 
 
 app = App()
